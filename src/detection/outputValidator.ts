@@ -1,11 +1,10 @@
+import { findPhoneNumbersInText } from 'libphonenumber-js';
 import type { TokenMap } from './piiRedactor';
 
-// Local bounded PII patterns for L6 outbound DLP. Bounds (RFC 5321: local ≤64,
-// domain ≤253) make these ReDoS-safe on adversarial output. We intentionally
-// do not reuse the inbound redactor's unbounded patterns here.
+// Local bounded email pattern for L6 outbound DLP. Bounds (RFC 5321: local ≤64,
+// domain ≤253) make it ReDoS-safe on adversarial output. Phone detection uses
+// the same libphonenumber-js engine the inbound redactor uses.
 const OUT_EMAIL_RE = /[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9.-]{1,253}\.[A-Za-z]{2,24}/g;
-const OUT_PHONE_RE =
-  /(?:\+972[\s-]?5\d[\s-]?\d{3}[\s-]?\d{4}|\+[1-9]\d{0,2}(?:[\s.-]?\d){6,14}|0\s?5\d[\s-]?\d{3,4}[\s-]?\d{4})/g;
 
 const SECRET_PATTERNS = [
   { rule: 'ANTHROPIC_KEY_LEAK',  patternName: 'sk_ant_prefix',  re: /sk-ant-[A-Za-z0-9_-]{20,}/ },
@@ -54,7 +53,9 @@ export function validateOutput(text: string, tokenMap: TokenMap): OutputValidati
 
   // Pass 4: outbound PII DLP — block if output contains PII not in this request's token map
   const knownValues = new Set(Object.values(tokenMap));
-  for (const match of [...(text.match(OUT_EMAIL_RE) ?? []), ...(text.match(OUT_PHONE_RE) ?? [])]) {
+  const phoneMatches = findPhoneNumbersInText(text, 'IL').map((m) => text.slice(m.startsAt, m.endsAt));
+  const emailMatches = text.match(OUT_EMAIL_RE) ?? [];
+  for (const match of [...emailMatches, ...phoneMatches]) {
     if (!knownValues.has(match)) {
       return { action: 'block', rule: 'OUTBOUND_PII', patternName: 'new_pii_in_output' };
     }

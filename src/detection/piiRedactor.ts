@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { findPhoneNumbersInText } from 'libphonenumber-js';
 
 export type TokenMap = Record<string, string>;
 
@@ -21,11 +22,28 @@ function isValidIsraeliId(digits: string): boolean {
 
 const EMAIL_RE = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
 
-// Israeli local mobile: 05X-XXXXXXX or 05XXXXXXXX (with optional separators)
-// Israeli +972: +972-5X-XXX-XXXX variants
-// International: +[1-9] followed by 6-14 digits with optional separators (hyphens/spaces/dots)
-const PHONE_RE =
-  /(?:\+972[\s-]?(?:5[0-9])[\s-]?\d{3}[\s-]?\d{4}|\+[1-9](?:[\s.-]?\d){6,14}|0(?:5[0-9])[\s-]?\d{3,4}[\s-]?\d{4})/g;
+// Phone numbers are redacted via Google's libphonenumber (findPhoneNumbersInText below).
+// defaultCountry='IL' lets national numbers without country code resolve, including
+// IL mobile (05X), IL landlines (02/03/04/08/09), and +972 international. The same call
+// also recognizes every other country's numbering plan (+1 US, +44 UK, etc.) — no
+// separate intl regex needed.
+
+function redactPhones(text: string, tokenMap: TokenMap): string {
+  const matches = findPhoneNumbersInText(text, 'IL');
+  if (matches.length === 0) return text;
+  let out = '';
+  let cursor = 0;
+  for (const m of matches) {
+    out += text.slice(cursor, m.startsAt);
+    const raw = text.slice(m.startsAt, m.endsAt);
+    const token = `[PII:phone:${randomUUID()}]`;
+    tokenMap[token] = raw;
+    out += token;
+    cursor = m.endsAt;
+  }
+  out += text.slice(cursor);
+  return out;
+}
 
 // Context cues that flag nearby 9-digit numbers as Israeli IDs
 const ID_CONTEXT_CUES = /(?:ת\.ז|תעודת\s+זהות|national\s+id|id[_\s]?number|id\s*:)/i;
@@ -51,14 +69,9 @@ function redactIsraeliIds(text: string, tokenMap: TokenMap): string {
   });
 }
 
-function replaceWithToken(
-  text: string,
-  regex: RegExp,
-  type: 'email' | 'phone',
-  tokenMap: TokenMap,
-): string {
-  return text.replace(regex, (match) => {
-    const token = `[PII:${type}:${randomUUID()}]`;
+function replaceEmail(text: string, tokenMap: TokenMap): string {
+  return text.replace(EMAIL_RE, (match) => {
+    const token = `[PII:email:${randomUUID()}]`;
     tokenMap[token] = match;
     return token;
   });
@@ -68,8 +81,8 @@ export function redactPii(input: string): RedactionResult {
   const tokenMap: TokenMap = {};
   let text = input;
   // Order matters: email first, then phone, then Israeli ID (per arch §10.4)
-  text = replaceWithToken(text, EMAIL_RE, 'email', tokenMap);
-  text = replaceWithToken(text, PHONE_RE, 'phone', tokenMap);
+  text = replaceEmail(text, tokenMap);
+  text = redactPhones(text, tokenMap);
   text = redactIsraeliIds(text, tokenMap);
   return { text, tokenMap };
 }

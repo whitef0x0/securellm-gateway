@@ -43,8 +43,11 @@ describe('PII redactor', () => {
   });
 
   it('does not redact 9-digit number adjacent to math operator', () => {
-    const { text } = redactPii('Result = 039337423 + 1');
-    expect(text).toContain('039337423');
+    // 123456782 is a valid IL Teudat Zehut checksum but not a valid IL phone prefix,
+    // so the only thing that could redact it is the ID detector — which we expect
+    // to skip due to the math-adjacent guard.
+    const { text } = redactPii('Result = 123456782 + 1');
+    expect(text).toContain('123456782');
   });
 
   it('handles multiple PII types in one string', () => {
