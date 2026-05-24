@@ -19,13 +19,13 @@ function isValidIsraeliId(digits: string): boolean {
   return sum % 10 === 0;
 }
 
-const EMAIL_RE = /[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/g;
+const EMAIL_RE = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
 
 // Israeli local mobile: 05X-XXXXXXX or 05XXXXXXXX (with optional separators)
 // Israeli +972: +972-5X-XXX-XXXX variants
 // International: +[1-9] followed by 6-14 digits with optional separators (hyphens/spaces/dots)
 const PHONE_RE =
-  /(?:\+972[\s\-]?(?:5[0-9])[\s\-]?\d{3}[\s\-]?\d{4}|\+[1-9](?:[\s\-.]?\d){6,14}|0(?:5[0-9])[\s\-]?\d{3,4}[\s\-]?\d{4})/g;
+  /(?:\+972[\s-]?(?:5[0-9])[\s-]?\d{3}[\s-]?\d{4}|\+[1-9](?:[\s.-]?\d){6,14}|0(?:5[0-9])[\s-]?\d{3,4}[\s-]?\d{4})/g;
 
 // Context cues that flag nearby 9-digit numbers as Israeli IDs
 const ID_CONTEXT_CUES = /(?:ת\.ז|תעודת\s+זהות|national\s+id|id[_\s]?number|id\s*:)/i;

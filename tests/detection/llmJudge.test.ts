@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import Anthropic from '@anthropic-ai/sdk';
 import { createJudge } from '../../src/detection/llmJudge';
 

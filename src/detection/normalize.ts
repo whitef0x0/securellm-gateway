@@ -12,7 +12,7 @@ export interface NormalizeResult {
 // Covers the most common homoglyph attacks; not exhaustive (full coverage is v2).
 const CONFUSABLES: Record<string, string> = {
   'а': 'a', 'е': 'e', 'і': 'i', 'о': 'o', 'р': 'r',
-  'с': 'c', 'х': 'x', 'р': 'r', 'α': 'a', 'ο': 'o',
+  'с': 'c', 'х': 'x', 'α': 'a', 'ο': 'o',
   'Ι': 'I', 'ρ': 'p',
 };
 

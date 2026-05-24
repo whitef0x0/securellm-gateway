@@ -12,6 +12,7 @@ export type ScanResult =
 function isNonLatinHeavy(text: string): boolean {
   const wordChars = text.replace(/\s/g, '');
   if (wordChars.length === 0) return false;
+  // eslint-disable-next-line no-control-regex -- intentional ASCII range check for non-Latin script detection
   const nonLatin = (wordChars.match(/[^\x00-\x7F]/g) ?? []).length;
   return nonLatin / wordChars.length > 0.3;
 }
