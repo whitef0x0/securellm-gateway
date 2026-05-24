@@ -3,12 +3,12 @@ import type { TokenMap } from './piiRedactor';
 // Local bounded PII patterns for L6 outbound DLP. Bounds (RFC 5321: local ≤64,
 // domain ≤253) make these ReDoS-safe on adversarial output. We intentionally
 // do not reuse the inbound redactor's unbounded patterns here.
-const OUT_EMAIL_RE = /[A-Za-z0-9._%+\-]{1,64}@[A-Za-z0-9.\-]{1,253}\.[A-Za-z]{2,24}/g;
+const OUT_EMAIL_RE = /[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9.-]{1,253}\.[A-Za-z]{2,24}/g;
 const OUT_PHONE_RE =
-  /(?:\+972[\s\-]?5\d[\s\-]?\d{3}[\s\-]?\d{4}|\+[1-9]\d{0,2}(?:[\s\-.]?\d){6,14}|0\s?5\d[\s\-]?\d{3,4}[\s\-]?\d{4})/g;
+  /(?:\+972[\s-]?5\d[\s-]?\d{3}[\s-]?\d{4}|\+[1-9]\d{0,2}(?:[\s.-]?\d){6,14}|0\s?5\d[\s-]?\d{3,4}[\s-]?\d{4})/g;
 
 const SECRET_PATTERNS = [
-  { rule: 'ANTHROPIC_KEY_LEAK',  patternName: 'sk_ant_prefix',  re: /sk-ant-[A-Za-z0-9\-_]{20,}/ },
+  { rule: 'ANTHROPIC_KEY_LEAK',  patternName: 'sk_ant_prefix',  re: /sk-ant-[A-Za-z0-9_-]{20,}/ },
   { rule: 'OPENAI_KEY_LEAK',     patternName: 'sk_prefix',      re: /\bsk-[A-Za-z0-9]{20,}/ },
   { rule: 'AWS_ACCESS_KEY_LEAK', patternName: 'akia_prefix',    re: /\bAKIA[0-9A-Z]{16}\b/ },
   // Real JWTs always start with "eyJ" (base64url of `{"`). Anchoring on this literal

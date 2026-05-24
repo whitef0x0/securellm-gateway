@@ -18,5 +18,10 @@ export default tseslint.config(
     files: ['src/config/**', 'src/scripts/**', 'tests/**', '**/*.config.*'],
     rules: { 'no-process-env': 'off', 'no-console': 'off' },
   },
+  {
+    // Tests use `as any` for partial mocks of complex SDK types.
+    files: ['tests/**'],
+    rules: { '@typescript-eslint/no-explicit-any': 'off' },
+  },
   { ignores: ['dist/', 'coverage/', 'node_modules/'] },
 );
