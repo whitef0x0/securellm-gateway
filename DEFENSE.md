@@ -191,6 +191,13 @@ judge if escalate) → L5 wrap → provider → L6 validate → re-hydrate → a
 > ReDoS surface, covers every country. Three lines of integration code instead of an unbounded
 > regex maintenance burden.
 
+**"Why a library for phones but a regex for emails?"**
+> Used the right tool per problem. Phone needs libphonenumber because formats vary by country and
+> evolve. Email format has been RFC-stable for 40 years; a bounded regex (RFC 5321 bounds: local
+> ≤64, domain ≤253, TLD ≤24) is the correct, ReDoS-safe choice and adds no maintenance burden.
+> Libraries like `validator.js` are for validating one input, not scanning prose; `email-regex`
+> is just a maintained regex wrapped in an npm package — same approach, marginal value.
+
 **"What doesn't this protect against?"**
 > README has a section. Key items: prompt injection via documents/RAG (no RAG endpoint in v1),
 > multi-turn context poisoning (stateless gateway, no session), exfiltration via steganography,

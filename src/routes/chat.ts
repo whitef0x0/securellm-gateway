@@ -2,7 +2,8 @@ import { Router, type Request, type Response } from 'express';
 import { z } from 'zod';
 import Anthropic from '@anthropic-ai/sdk';
 import { redactPii, rehydratePii, type TokenMap } from '../detection/piiRedactor';
-import { scanInput } from '../detection/scanner';
+import { scanInput, type ScanResult } from '../detection/scanner';
+import { classify } from '../detection/classifier';
 import { createJudge } from '../detection/llmJudge';
 import { wrapWithStructuralIsolation } from '../detection/structuralIsolation';
 import { chat as llmChat, ProviderError } from '../services/llmProvider';
@@ -91,7 +92,7 @@ chatRouter.post('/chat', async (req: Request, res: Response): Promise<void> => {
   }
 
   // L1/L2 scan
-  const scanResult = scanInput(redactedUserText);
+  let scanResult: ScanResult = scanInput(redactedUserText);
 
   if (scanResult.action === 'block') {
     detectedThreats.push({
@@ -101,6 +102,22 @@ chatRouter.post('/chat', async (req: Request, res: Response): Promise<void> => {
     });
     await auditAndRespond('blocked', 400, { error: 'injection_detected', detectedThreats });
     return;
+  }
+
+  // L3 classifier — runs when L2 didn't hard-block. Score band: ≥0.85 block,
+  // 0.5–0.85 escalate to L4, <0.5 pass. If model unavailable, fall through to L4 path.
+  const l3 = await classify(redactedUserText);
+  if (l3.action === 'block') {
+    detectedThreats.push({
+      rule: l3.rule,
+      patternName: 'l3_classifier_high_confidence',
+      location: 'input',
+    });
+    await auditAndRespond('blocked', 400, { error: 'injection_detected', detectedThreats });
+    return;
+  }
+  if (l3.action === 'escalate') {
+    scanResult = { action: 'escalate', signals: ['L3_MID_CONFIDENCE'] };
   }
 
   // L4 judge — fail closed if escalation signals present and judge unavailable/uncertain

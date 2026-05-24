@@ -270,27 +270,24 @@ if ('reveal' in req.query) {
   ---
   5. What I Would Do With More Time
   
-  1. Replace the English-only classifier with a dedicated, multilingual model trained on our own audit corpus.
-  The detection pipeline's semantic layer (L3) currently uses deberta-v3-small-prompt-injection-v2, which is
-  English-only and weak on jailbreaks — so non-English attacks (e.g. the Hebrew INJ-E3 case) and DAN-style
-  jailbreaks fall back to the L4 Haiku escalation, which adds latency and cost. With more time I'd train a
-  dedicated, multilingual classifier and run it locally (ONNX/Candle), removing the LLM-judge dependency on the
-  hot path for those cases. The design already lays the groundwork: every blocked request stores PII-stripped
-  sanitizedThreatContent, which accumulates into a labelled, privacy-safe training corpus. How AI would help:
-  curate and label that corpus, generate synthetic adversarial variations (paraphrases, encodings,
-  mixed-language) to balance the dataset, scaffold the fine-tuning + evaluation pipeline, and benchmark candidate
-   models against the full Appendix A corpus before promotion.
+  1. Swap L3 from DeBERTa-v3-base to Llama Prompt Guard 2 (multilingual).
+  v1 L3 uses protectai/deberta-v3-base-prompt-injection-v2 (~139M params, ungated, English-focused)
+  via @huggingface/transformers — pragmatic because it works without an HF auth token, so
+  docker-compose up runs unattended for evaluators. With production-grade infra and an org HF
+  token, swap to meta-llama/Llama-Prompt-Guard-2-86M: smaller (86M), multilingual (covers Hebrew,
+  Russian, Arabic), and trained specifically for prompt injection + jailbreaks. This eliminates
+  the structural reliance on L4 for non-English attacks (Hebrew INJ-E3 today reaches L4 via L1
+  non-Latin signal; LPG2 would catch it at L3 deterministically). Same loader code, just a
+  different model identifier. Documented in arch §17.11 step 1.
 
-  2. Add L3 DeBERTa ONNX classifier for semantic injection detection.
-  v1 uses L4 (Haiku judge) as the semantic layer, triggered by L1/L2/heuristic escalation signals
-  (non-Latin script, encoding anomalies, long messages). This works but relies on a paid Anthropic
-  API call on suspicious input rather than a local deterministic probability score.
-  v2 would bake protectai/deberta-v3-small-prompt-injection-v2 (int8 ONNX, ~100 MB) into the
-  Docker image, run on CPU at startup, and use overlapping 384-token windows for deterministic
-  scan coverage. L3 score in a middle band (0.15–0.85) would escalate to L4; high confidence
-  (≥0.85) would block directly without a judge call. How AI would help: generate the tokenizer-
-  aware segmentation logic, write the ONNX startup health check, and produce adversarial test
-  fixtures across all window-boundary edge cases.
+  2. Train a dedicated audit-corpus classifier as L3.
+  Once LPG2 is in place, replace the general-purpose model with one fine-tuned on this gateway's
+  own audit corpus. Every blocked request stores PII-stripped sanitizedThreatContent[] — that
+  accumulates into a labelled, privacy-safe training set capturing organization-specific attack
+  patterns and adversarial paraphrases the general-purpose model misses. Multilingual base
+  (xlm-roberta-base or LPG2 itself), quantized to int8, swapped in via the same @huggingface/
+  transformers pipeline. A/B against LPG2 before promotion; promotion gated on precision/recall
+  improvement on a held-out adversarial set. Documented in arch §17.11 step 2.
 
   3. Add holistic semantic-leak detection to output validation.
   The current output validator (L6) catches verbatim secret patterns and known compromise markers, but not

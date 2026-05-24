@@ -474,7 +474,7 @@ detectedThreats[] containing rule, patternName, and location.
 Layer	Mechanism	Required in v1	Purpose
 L1	Normalization	Yes	Defeat common encoding/homoglyph/control-char evasion
 L2	Regex/heuristic pre-filter	Yes	Deterministic named rules for corpus and auditability
-L3	Local ML classifier	Yes	Llama Prompt Guard 2 (86M params) via @huggingface/transformers — multilingual, fine-tuned for prompt injection, plug-and-play (no native module compilation). Score band feeds L4 escalation.
+L3	Local ML classifier	Yes	protectai/deberta-v3-base-prompt-injection-v2 (~139 M params) via @huggingface/transformers — ungated on HuggingFace (works out of the box in unattended Docker builds without HF token), fine-tuned for prompt injection, plug-and-play (no native module compilation). Score band feeds L4 escalation. Multilingual upgrade to Llama Prompt Guard 2 documented in §17.11 v2.
 L4	LLM judge	Yes, conditional	Semantic backstop; fires on L1/L2/heuristic escalation signals (non-Latin, encoding anomalies, partial matches); fail-closed
 L5	Structural isolation	Yes	Reduce impact if something slips through
 L6	Output validation	Yes	Backstop on untrusted model output
@@ -566,19 +566,22 @@ STRUCTURED_BYPASS	Forced JSON/structured output indicating filters disabled or b
 Important: L2 patterns should use sanitized representative strings in tests. Do not paste the
 entire attack corpus into source comments or logs.
 
-9.6 L3 local classifier — Llama Prompt Guard 2
+9.6 L3 local classifier — DeBERTa-v3-base prompt-injection (v1)
 
-L3 uses Meta's Llama Prompt Guard 2 (86M parameters) accessed via @huggingface/transformers.
+L3 v1 uses `protectai/deberta-v3-base-prompt-injection-v2` (~139 M params) accessed via
+@huggingface/transformers.
 
-Why this model (not DeBERTa-v3-small-prompt-injection-v2):
+Why this model in v1 (and what changes in v2):
 
-- Multilingual: covers Hebrew, Russian, Arabic and other scripts that DeBERTa-v3-small does not.
-  This eliminates a structural dependency on L4 for non-English attacks (INJ-E3 class).
-- Trained specifically for prompt injection + jailbreaks; DeBERTa-v3-small was a general
-  text-classification model fine-tuned by a third party.
-- Released by Meta and actively maintained.
-- Same backbone class commercial LLM firewalls ship (Lakera, Microsoft Prompt Shields,
-  NVIDIA NeMo Guardrails all use small fine-tuned transformer classifiers).
+- **Ungated on HuggingFace** — downloads on first run without an HF auth token, which means
+  `docker-compose up` works for evaluators without any extra setup. Meta's Llama Prompt Guard 2
+  (LPG2) is gated and requires accepting a license + setting `HF_TOKEN`, which would break the
+  required-path quick-start. v2 (§17.11) swaps to LPG2 once an org-level HF token is available.
+- Trained specifically for prompt injection + jailbreaks (vs general text classification).
+- English-focused in v1 — non-English attacks like INJ-E3 (Hebrew translate-and-execute)
+  are caught by the English instruction inside the quote (`ignore the previous instructions`)
+  via L2 regex, with L4 Haiku as semantic backstop. LPG2's multilingual coverage in v2 makes
+  this a non-issue.
 
 Why @huggingface/transformers (not onnxruntime-node direct):
 
@@ -1310,16 +1313,27 @@ Regex performance tests pass.
 Gitleaks passes.
 README documents limitations and v2 work.
 
-17.11 L3 dedicated multilingual classifier trained on our audit corpus (v2)
+17.11 L3 v2 — Llama Prompt Guard 2 (multilingual) and audit-corpus fine-tuning
 
-v1 L3 uses Llama Prompt Guard 2, a general-purpose multilingual prompt-injection classifier.
-v2 work: replace it with a dedicated classifier fine-tuned on this gateway's own audit corpus
+Two-step v2 upgrade path for L3:
+
+**Step 1 — Swap to Llama Prompt Guard 2 (`meta-llama/Llama-Prompt-Guard-2-86M`)**
+
+- Multilingual: covers Hebrew, Russian, Arabic and other scripts.
+  Eliminates the v1 structural reliance on L4 for non-English attacks.
+- Smaller (86 M params vs v1's 139 M) and prompt-injection + jailbreak-specific.
+- Released by Meta, actively maintained.
+- Requires an org HuggingFace token (model is gated). Once `HF_TOKEN` is set in production,
+  swap the `L3_CLASSIFIER_MODEL` env var; no code change needed.
+
+**Step 2 — Dedicated classifier fine-tuned on our audit corpus**
+
+Replace the general-purpose model with one fine-tuned on this gateway's own audit corpus
 (`sanitizedThreatContent[]` accumulated from blocked requests) to capture organization-specific
-attack patterns and adversarial paraphrases that the general-purpose model misses.
+attack patterns and adversarial paraphrases.
 
-Approach:
 - Periodic offline training job consumes `sanitizedThreatContent` + benign samples
-- Multilingual base (e.g. xlm-roberta-base) fine-tuned with the audit corpus
+- Multilingual base (xlm-roberta-base or LPG2 itself) fine-tuned with the audit corpus
 - Quantized to int8, swapped in via the same @huggingface/transformers pipeline
-- A/B run alongside Llama Prompt Guard 2 before promotion; promotion gated on
+- A/B run alongside step 1 model before promotion; promotion gated on
   precision/recall improvement on a held-out adversarial set

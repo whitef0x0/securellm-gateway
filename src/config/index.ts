@@ -19,6 +19,9 @@ const schema = z.object({
   AUDIT_LOG_TTL_DAYS: z.coerce.number().int().positive().default(90),
   PII_VAULT_TTL_DAYS: z.coerce.number().int().positive().default(30),
   ANTHROPIC_API_KEY: z.string().optional(),
+  L3_CLASSIFIER_MODEL: z
+    .string()
+    .default('protectai/deberta-v3-base-prompt-injection-v2'),
 });
 
 export type Config = z.infer<typeof schema>;
