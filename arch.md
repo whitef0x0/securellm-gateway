@@ -40,6 +40,7 @@ fixtures — never executed, never pasted wholesale into an AI tool.
 |---|---|---|
 | Language | TypeScript (`strict: true`) | Brief requirement |
 | HTTP | Express | Brief requirement |
+| Security headers | Helmet | Adds X-Content-Type-Options, X-Frame-Options, HSTS, and removes x-powered-by. Single middleware, no config needed for v1 defaults. |
 | Datastore | MongoDB via Mongoose | Brief requirement. Mongoose for connection pooling, index/TTL declaration, schema validation colocated with models. `.lean()` enforced on all read paths to avoid hydration overhead. |
 | Cache / rate limit | Redis via `ioredis` | Brief requirement. `ioredis` for robust typing & cluster support. |
 | Key hashing | argon2id | OWASP 2023 recommendation — memory-hard, GPU-resistant. Chosen over bcrypt. |
@@ -153,6 +154,12 @@ README.md
   log line, the `X-Request-Id` response header, and stored as an indexed field on
   `AuditLog`. Linking a log line to an audit record is a single indexed key lookup —
   **no cross-collection joins** (consistent with the document model).
+- **Security headers** — Helmet middleware runs first on all routes, setting
+  X-Content-Type-Options, X-Frame-Options, HSTS, and others. `app.disable('x-powered-by')`
+  is redundant when Helmet is present but kept for explicitness.
+  `app.set('trust proxy', false)` is set explicitly even though it is the default —
+  documents the intentional decision to ignore X-Forwarded-For in local compose where
+  nginx is absent.
 - **Body parsing** — `express.json()` with `BODY_SIZE_LIMIT` (default 4 MB). No chunking
   needed for JSON; limit prevents memory exhaustion before auth runs.
 - **Global error handler** — single Express error middleware: logs with correlation ID,

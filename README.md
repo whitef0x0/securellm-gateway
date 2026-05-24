@@ -74,6 +74,16 @@ npm run typecheck      # tsc --noEmit
 | `PII_VAULT_TTL_DAYS` | No | `30` | PiiVault document TTL in days |
 | `ANTHROPIC_API_KEY` | No | — | If absent, `/v1/chat` returns `503` (degraded mode) |
 
+## Known limitations
+
+The gateway controls what passes through it. It does not protect against:
+
+- **Prompt injection via documents or RAG** — the gateway has no RAG endpoint; if a caller embeds untrusted document content in a message body, injection detection runs on the assembled text but cannot distinguish document from instruction.
+- **Multi-turn context poisoning** — the gateway is stateless. It inspects each request independently and has no view of conversation history.
+- **Steganographic exfiltration** — an LLM outputting data encoded in whitespace patterns, Unicode homoglyphs, or other covert channels will pass output validation.
+- **Compromised model weights** — controls assume the upstream provider (Anthropic) is trusted. A backdoored or fine-tuned model is out of scope.
+- **Side-channel attacks on the gateway process itself** — timing, memory, or cache attacks against the Node.js process are not addressed.
+
 ## Architecture
 
 See [`arch_reviewed.md`](arch_reviewed.md) for the full design, threat model, and implementation decisions.

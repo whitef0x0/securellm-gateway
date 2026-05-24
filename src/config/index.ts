@@ -14,6 +14,8 @@ const schema = z.object({
   REDIS_URL: z.string().url().default('redis://localhost:6379'),
   LOG_PSEUDONYM_SECRET: z.string().min(32),
   PII_ENCRYPTION_KEY: z.string().min(44), // 32 bytes base64 = 44 chars
+  RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(60_000),
+  RATE_LIMIT_MAX_REQUESTS: z.coerce.number().int().positive().default(30),
   AUDIT_LOG_TTL_DAYS: z.coerce.number().int().positive().default(90),
   PII_VAULT_TTL_DAYS: z.coerce.number().int().positive().default(30),
   ANTHROPIC_API_KEY: z.string().optional(),

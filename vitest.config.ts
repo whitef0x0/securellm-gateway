@@ -4,6 +4,7 @@ import { randomBytes } from 'node:crypto';
 export default defineConfig({
   test: {
     environment: 'node',
+    fileParallelism: false,
     include: ['tests/**/*.test.ts'],
     env: {
       LOG_LEVEL: 'silent',

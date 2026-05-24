@@ -11,6 +11,7 @@ declare global {
         role: 'client' | 'admin';
         scopes: string[];
         allowedModels?: string[];
+        rateLimitOverride?: number;
       };
     }
   }

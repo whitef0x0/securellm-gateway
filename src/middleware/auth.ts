@@ -57,6 +57,7 @@ export async function auth(req: Request, res: Response, next: NextFunction): Pro
       role: key.role,
       scopes: key.scopes,
       allowedModels: key.allowedModels,
+      rateLimitOverride: key.rateLimitOverride,
     };
 
     // Best-effort lastUsedAt — non-blocking, never fails the request

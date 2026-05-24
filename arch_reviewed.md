@@ -448,6 +448,18 @@ Headers:
 
 X-RateLimit-Limit
 X-RateLimit-Remaining
+
+Implementation pattern:
+
+createRateLimiter(redis: Redis, opts) returns a RequestHandler — dependency injection,
+no global singleton. The Redis client is created in server.ts (connectRedis(url) returns
+the client) and passed into createApp(redis?). Tests that exercise rate limiting pass a
+real Redis client; tests for other concerns (auth, health) call createApp() with no Redis
+and the rate limiter is simply not wired. This avoids global state and makes the dependency
+explicit.
+
+connectRedis(url) / disconnectRedis(client) in src/redis.ts own the lifecycle.
+server.ts calls disconnectRedis(redis) in the graceful shutdown callback.
 Retry-After on 429
 9. Security Control 3 — Injection Detection
 
@@ -462,8 +474,8 @@ detectedThreats[] containing rule, patternName, and location.
 Layer	Mechanism	Required in v1	Purpose
 L1	Normalization	Yes	Defeat common encoding/homoglyph/control-char evasion
 L2	Regex/heuristic pre-filter	Yes	Deterministic named rules for corpus and auditability
-L3	Local classifier	Yes	Semantic detection with deterministic segmentation
-L4	LLM judge	Yes, conditional	Covers classifier blind spots; fail-closed when triggered
+L3	Local ML classifier	No — v2 (see §17)	DeBERTa ONNX; deferred due to model download + startup complexity; L4 provides semantic coverage in v1
+L4	LLM judge	Yes, conditional	Semantic backstop; fires on L1/L2/heuristic escalation signals (non-Latin, encoding anomalies, partial matches); fail-closed
 L5	Structural isolation	Yes	Reduce impact if something slips through
 L6	Output validation	Yes	Backstop on untrusted model output
 9.2 L1 normalization
@@ -554,144 +566,32 @@ STRUCTURED_BYPASS	Forced JSON/structured output indicating filters disabled or b
 Important: L2 patterns should use sanitized representative strings in tests. Do not paste the
 entire attack corpus into source comments or logs.
 
-9.6 L3 local classifier
+9.6 L3 local classifier — DEFERRED TO v2
 
-Use:
+L3 (DeBERTa ONNX) is not implemented in v1.
 
-protectai/deberta-v3-small-prompt-injection-v2
+Reason: integrating an ONNX model requires baking a ~100 MB binary into the Docker image,
+adding onnxruntime-node as a native dependency, implementing tokenizer-aware segmentation,
+and writing a startup health check for model load. This is a meaningful scope item beyond v1.
 
-Implementation constraints:
+v1 semantic coverage relies on L4 (Haiku judge) triggered by L1/L2/heuristic escalation signals.
 
-ONNX int8 model baked into Docker image.
-Loaded once at startup.
-CPU only.
-No runtime model download.
-Unit tests may mock classifier.
-Integration tests must include at least one real classifier test if feasible.
-If model fails to load at startup, the service should fail readiness rather than silently disable L3.
-9.7 Deterministic segmentation policy for L3
-
-The classifier must not scan only the first model window.
-
-L3 produces deterministic scan units.
-
-9.7.1 Invariant
-
-No input span may be forwarded unless it was included in at least one L2/L3/L4 detection unit.
-
-Never silently scan only a prefix.
-
-9.7.2 Per-message segmentation
-
-For every non-system message:
-
-Apply PII redaction first.
-Apply L1 normalization.
-Tokenize using the classifier tokenizer or a conservative approximation.
-Split into overlapping token windows:
-WINDOW_TOKENS = 384
-OVERLAP_TOKENS = 128
-Classify every window.
-If any window scores above block threshold, block.
-If any window falls into the escalation band, escalate that window plus neighboring context to L4.
-9.7.3 Conversation-level segmentation
-
-Also concatenate all non-system messages into a transcript:
-
-<role:user>...</role:user>
-<role:assistant>...</role:assistant>
-
-Run the same overlapping-window classifier over the concatenated transcript.
-
-This catches split attacks where each individual message appears benign.
-
-9.7.4 Boundary windows
-
-Always classify:
-
-first 384 tokens of each message,
-last 384 tokens of each message,
-first 384 tokens of the full transcript,
-last 384 tokens of the full transcript.
-
-This prevents padding attacks that hide malicious instructions at the end.
-
-9.7.5 Oversized scan budget
-
-Set a hard max scan budget.
-
-If normalized input exceeds the scan budget:
-
-return 413 payload_too_large, or
-return 400 input_too_large_to_scan.
-
-Do not forward partially scanned input.
-
-9.7.6 Segmentation pseudocode
-const WINDOW_TOKENS = 384;
-const OVERLAP_TOKENS = 128;
-
-function segmentTokens(tokens: string[]): string[][] {
-  const windows: string[][] = [];
-  const step = WINDOW_TOKENS - OVERLAP_TOKENS;
-
-  for (let start = 0; start < tokens.length; start += step) {
-    windows.push(tokens.slice(start, start + WINDOW_TOKENS));
-  }
-
-  return windows;
-}
-
-Classifier decision pseudocode:
-
-for (const unit of detectionUnits) {
-  const score = await classifier.score(unit.text);
-
-  if (score >= BLOCK_THRESHOLD) {
-    return block({
-      rule: "CLASSIFIER",
-      patternName: "classifier_high_confidence",
-      location: unit.location,
-    });
-  }
-
-  if (score > ALLOW_THRESHOLD && score < BLOCK_THRESHOLD) {
-    escalationSignals.push({
-      type: "CLASSIFIER_AMBIGUOUS",
-      unit,
-      score,
-    });
-  }
-}
-9.8 L3/L4 thresholds
-
-Use explicit thresholds in config:
-
-CLASSIFIER_BLOCK_THRESHOLD = 0.85
-CLASSIFIER_ALLOW_THRESHOLD = 0.15
-
-Behavior:
-
-score >= 0.85 → block 400, rule CLASSIFIER
-score <= 0.15 with no escalation signals → allow to next layer
-middle band → escalate to L4
+See §17 for the v2 DeBERTa classifier plan.
 9.9 L4 LLM judge
 
-L4 uses Anthropic Haiku or the configured low-latency Anthropic model as a judge.
+L4 uses Anthropic Haiku as a semantic judge.
 
-L4 is conditional.
+L4 is conditional (not fired for every request).
 
-Escalation signals:
+In v1, L4 escalation signals (no L3 classifier score):
 
-classifier score in middle band,
-mostly non-ASCII text,
-jailbreak/persona markers,
-unusually long message,
+mostly non-Latin / non-ASCII text (covers Hebrew INJ-E3 and similar),
+jailbreak/persona marker keywords detected by L2 but below hard block,
 base64/hex blob found by L1,
 NORMALIZATION_DIFFERENTIAL,
 ENCODED_PAYLOAD_DETECTED,
-possible non-English translate-and-execute pattern,
-structured bypass pattern.
+possible non-English translate-and-execute heuristic,
+unusually long message (configurable threshold).
 9.10 L4 fail-closed policy
 
 If L4 is triggered, it must not fail open.
@@ -762,8 +662,7 @@ Indirect injection and payload smuggling are handled as follows:
 E-class required corpus:
   - L1 normalization/decode
   - L2 DELIMITER_INJECTION or INDIRECT_INJECTION
-  - L3 classifier with deterministic segmentation
-  - L4 fail-closed judge where needed
+  - L4 fail-closed judge where L2 alone is insufficient (non-Latin, encoding anomaly)
 
 Required behavior:
 
@@ -1057,6 +956,11 @@ provider is degraded,
 If required crypto/database config is missing:
 
 service fails startup.
+
+Redis and MongoDB are both required at startup. server.ts connects them in parallel
+(Promise.all) before binding the HTTP port. If either is unreachable, main() throws
+and the process exits with code 1. There is no degraded mode without a datastore —
+rate limiting and audit writes are security controls, not optional features.
 14. LLM Provider Integration
 14.1 Provider
 
@@ -1336,8 +1240,7 @@ Redis rate limiter.
 PII redactor and token map.
 L1 normalization.
 L2 input pattern scanner.
-L3 segmentation module and classifier wrapper.
-L4 judge wrapper with fail-closed behavior.
+L4 judge wrapper with fail-closed behavior (L3 deferred to v2 — see §17.11).
 L5 structural isolation.
 Anthropic provider integration.
 L6 output validator.
@@ -1351,8 +1254,7 @@ Claude Code must follow these implementation guardrails:
 
 Do not add streaming responses.
 Do not stub the provider in application code.
-Do not silently disable L2, L3, or L4.
-If L3 model loading fails, readiness must fail or secure mode must reject chat requests.
+Do not silently disable L2 or L4.
 If L4 is triggered and unavailable, fail closed.
 Do not log raw prompts, raw PII, raw API keys, or raw injection strings.
 Do not return LLM output if audit write fails.
@@ -1384,3 +1286,19 @@ Outbound new PII is blocked.
 Regex performance tests pass.
 Gitleaks passes.
 README documents limitations and v2 work.
+
+17.11 L3 DeBERTa ONNX classifier (v2)
+
+Replace L4 trigger heuristics with a proper ML pre-filter.
+
+Model: protectai/deberta-v3-small-prompt-injection-v2 (int8 ONNX, ~100 MB)
+Runtime: onnxruntime-node, CPU only, loaded once at startup
+Segmentation: overlapping 384-token windows with 128-token overlap, per-message and
+  full-transcript scan to prevent split attacks
+Thresholds: CLASSIFIER_BLOCK_THRESHOLD=0.85 (block), CLASSIFIER_ALLOW_THRESHOLD=0.15 (allow),
+  middle band → L4 escalation
+Startup: if model fails to load, readiness check must fail (not silently disabled)
+Why deferred: Docker image size (+100 MB), onnxruntime-node native build, tokenizer-aware
+  segmentation, and integration testing are a significant scope item beyond v1 time budget.
+  L4 heuristic escalation provides semantic coverage for v1; DeBERTa improves precision and
+  recall and reduces false-positive burden on L4.
