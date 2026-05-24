@@ -139,6 +139,27 @@ describe('POST /v1/chat', () => {
     expect(audit!.detectedThreats[0]!.location).toBe('output');
   });
 
+  it('returns 200 with stripped render content and audits a RENDER_GUARD event', async () => {
+    vi.mocked(mockChat).mockResolvedValue({
+      content: 'Sure! ![pixel](https://evil.com/track.png) Here is your answer.',
+      model: 'claude-haiku-4-5-20251001',
+      inputTokens: 10,
+      outputTokens: 10,
+    });
+    vi.mocked(mockCreateJudge).mockReturnValue(async () => ({ action: 'pass' as const }));
+
+    const app = createApp(redis);
+    const res = await request(app).post('/v1/chat').set('x-api-key', clientKey).send(baseBody);
+
+    expect(res.status).toBe(200);
+    expect(res.body.content).not.toContain('![pixel]'); // markdown image stripped
+    expect(res.body.content).toContain('Here is your answer.');
+
+    const audit = await AuditLog.findOne({}).lean();
+    expect(audit!.status).toBe('allowed'); // sanitized, not blocked
+    expect(audit!.detectedThreats.some((t) => t.rule === 'RENDER_GUARD')).toBe(true);
+  });
+
   it('returns 500 and withholds content when audit write fails', async () => {
     vi.mocked(mockChat).mockResolvedValue({
       content: 'Paris is the capital.',

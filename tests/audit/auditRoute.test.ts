@@ -56,7 +56,6 @@ describe('GET /v1/audit', () => {
       anonymizedKeyId: 'anon',
       requestHash: 'h',
       detectedThreats: [],
-      sanitizedThreatContent: [],
       patternSetVersion: '1.0.0',
       latencyMs: 1,
       status,

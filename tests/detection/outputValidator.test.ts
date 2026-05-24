@@ -62,27 +62,30 @@ describe('outputValidator', () => {
   });
 
   // Pass 5 — render / exfil guard
-  it('strips markdown image and passes', () => {
+  it('strips markdown image, passes, and flags sanitized', () => {
     const result = validateOutput('Here ![pixel](https://evil.com/track.png) is the answer', {});
     expect(result.action).toBe('pass');
     expect((result as any).output).not.toContain('![');
     expect((result as any).output).toContain('Here');
     expect((result as any).output).toContain('is the answer');
+    expect((result as any).sanitized).toBe(true);
   });
 
-  it('strips HTML img tag and passes', () => {
+  it('strips HTML img tag, passes, and flags sanitized', () => {
     const result = validateOutput('hello <img src="https://evil.com/pixel.gif"> world', {});
     expect(result.action).toBe('pass');
     expect((result as any).output).not.toContain('<img');
     expect((result as any).output).toContain('hello');
     expect((result as any).output).toContain('world');
+    expect((result as any).sanitized).toBe(true);
   });
 
   // Clean output
-  it('passes clean output unchanged', () => {
+  it('passes clean output unchanged with sanitized=false', () => {
     const result = validateOutput('The capital of France is Paris.', {});
     expect(result.action).toBe('pass');
     expect((result as any).output).toBe('The capital of France is Paris.');
+    expect((result as any).sanitized).toBe(false);
   });
 
   // ReDoS performance — arch §2.1 requirement

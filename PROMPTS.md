@@ -282,12 +282,14 @@ if ('reveal' in req.query) {
 
   2. Train a dedicated audit-corpus classifier as L3.
   Once LPG2 is in place, replace the general-purpose model with one fine-tuned on this gateway's
-  own audit corpus. Every blocked request stores PII-stripped sanitizedThreatContent[] — that
-  accumulates into a labelled, privacy-safe training set capturing organization-specific attack
-  patterns and adversarial paraphrases the general-purpose model misses. Multilingual base
-  (xlm-roberta-base or LPG2 itself), quantized to int8, swapped in via the same @huggingface/
-  transformers pipeline. A/B against LPG2 before promotion; promotion gated on precision/recall
-  improvement on a held-out adversarial set. Documented in arch §17.11 step 2.
+  own audit corpus. v1 audit records deliberately store no threat snippets (only the rule that
+  fired) to keep attacker-controlled content out of the audit log; v2 would add a dedicated
+  PII-stripped threat-snippet capture path that accumulates into a labelled, privacy-safe
+  training set capturing organization-specific attack patterns and paraphrases the
+  general-purpose model misses. Multilingual base (xlm-roberta-base or LPG2 itself), quantized to
+  int8, swapped in via the same @huggingface/transformers pipeline. A/B against LPG2 before
+  promotion; promotion gated on precision/recall improvement on a held-out adversarial set.
+  Documented in arch §17.11 step 2.
 
   3. Add holistic semantic-leak detection to output validation.
   The current output validator (L6) catches verbatim secret patterns and known compromise markers, but not

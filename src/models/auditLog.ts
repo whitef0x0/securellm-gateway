@@ -16,7 +16,6 @@ interface IAuditLog extends Document {
   requestHash: string;
   responseHash?: string;
   detectedThreats: DetectedThreat[];
-  sanitizedThreatContent: string[];
   patternSetVersion: string;
   latencyMs: number;
   status: 'allowed' | 'blocked' | 'error';
@@ -43,7 +42,6 @@ const AuditLogSchema = new Schema<IAuditLog>(
     requestHash: { type: String, required: true },
     responseHash: { type: String },
     detectedThreats: { type: [DetectedThreatSchema], default: [] },
-    sanitizedThreatContent: { type: [String], default: [] },
     patternSetVersion: { type: String, required: true },
     latencyMs: { type: Number, required: true },
     status: { type: String, enum: ['allowed', 'blocked', 'error'], required: true },

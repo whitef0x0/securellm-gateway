@@ -45,7 +45,10 @@ const HTML_IMG_RE = /<img\b[^>]{0,500}>/gi;
 
 export type OutputValidationResult =
   | { action: 'block'; rule: string; patternName: string }
-  | { action: 'pass'; output: string };
+  // `sanitized` is true when the render/exfil guard (Pass 5) stripped content from the
+  // output — the response is still returned, but the caller records a RENDER_GUARD audit
+  // event so stripped exfil attempts are observable (arch §11.6).
+  | { action: 'pass'; output: string; sanitized: boolean };
 
 export function validateOutput(text: string, tokenMap: TokenMap): OutputValidationResult {
   for (const p of SECRET_PATTERNS) {
@@ -69,6 +72,6 @@ export function validateOutput(text: string, tokenMap: TokenMap): OutputValidati
   }
 
   // Pass 5: render/exfil guard — strip, don't block
-  const sanitized = text.replace(MD_IMAGE_RE, '').replace(HTML_IMG_RE, '');
-  return { action: 'pass', output: sanitized };
+  const output = text.replace(MD_IMAGE_RE, '').replace(HTML_IMG_RE, '');
+  return { action: 'pass', output, sanitized: output !== text };
 }

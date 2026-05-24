@@ -32,7 +32,6 @@ export async function writeAudit(params: AuditParams): Promise<void> {
   await AuditLog.create({
     ...rest,
     timestamp: new Date(),
-    sanitizedThreatContent: [],
     patternSetVersion: PATTERN_SET_VERSION,
   });
 

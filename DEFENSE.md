@@ -78,11 +78,10 @@ Why `<keyIdPrefix>.<secret>` with a public lookup handle?
 | Cut | Why |
 |---|---|
 | No streaming | Holistic output validation requires full response. Streaming shows unvetted output. |
-| No nginx in required path | Evaluators run `docker-compose up`. Keep it boring. |
 | No node-re2 | ReDoS perf tests cover the risk. node-re2 deferred to v2. |
-| DeBERTa-v3-small over Llama Prompt Guard 2 | English-only vs multilingual; general-purpose vs prompt-injection-specific. Going with Llama Prompt Guard 2 was strictly better on coverage. |
+| Llama Prompt Guard 2 deferred to v2 | LPG2 is multilingual + injection-specific (better), but it's **gated** on HuggingFace (needs a license + HF_TOKEN) — that would break the zero-setup `docker compose up`. v1 ships the **ungated `protectai/deberta-v3-base-prompt-injection-v2`**; LPG2 is the documented v2 swap (arch §17.11), same loader, just a different model id. |
 | node-onnxruntime direct over Transformers.js | Native module = platform-specific builds. Transformers.js is pure JS and bundles the tokenizer. Same ONNX backend internally. |
-| Dedicated audit-corpus-trained classifier | v2 (arch §17.11) — fine-tune on our own `sanitizedThreatContent` corpus to capture org-specific paraphrases. Llama Prompt Guard 2 covers general patterns first. |
+| Dedicated audit-corpus-trained classifier | v2 (arch §17.11) — add a PII-stripped threat-snippet capture path, then fine-tune on that corpus for org-specific paraphrases. Llama Prompt Guard 2 covers general patterns first. |
 | L4 disable toggle | Arch §19 guardrail: no disable toggle in v1. Fail-closed only. |
 | Bulk PII reveal | Reveal is per-correlationId only, self-auditing. Bulk export = separate scoped feature. |
 

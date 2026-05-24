@@ -918,7 +918,6 @@ model	string optional	Requested model
 requestHash	string	SHA-256 of redacted request
 responseHash	string nullable	SHA-256 of tokenized response or null
 detectedThreats	array	{ rule, patternName, location }[]
-sanitizedThreatContent	string[]	Optional sanitized snippets, never raw PII
 patternSetVersion	string	Version of detector rules
 latencyMs	number	End-to-end latency
 status	enum	allowed, blocked, error
@@ -1337,10 +1336,12 @@ Two-step v2 upgrade path for L3:
 **Step 2 — Dedicated classifier fine-tuned on our audit corpus**
 
 Replace the general-purpose model with one fine-tuned on this gateway's own audit corpus
-(`sanitizedThreatContent[]` accumulated from blocked requests) to capture organization-specific
-attack patterns and adversarial paraphrases.
+to capture organization-specific attack patterns and adversarial paraphrases. v1 audit
+records intentionally store no threat snippets (only the rule/patternName that fired) to
+keep the audit log free of attacker-controlled content; v2 would add a dedicated,
+PII-stripped threat-snippet capture path feeding the training set.
 
-- Periodic offline training job consumes `sanitizedThreatContent` + benign samples
+- Periodic offline training job consumes the captured threat snippets + benign samples
 - Multilingual base (xlm-roberta-base or LPG2 itself) fine-tuned with the audit corpus
 - Quantized to int8, swapped in via the same @huggingface/transformers pipeline
 - A/B run alongside step 1 model before promotion; promotion gated on

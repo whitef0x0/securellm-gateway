@@ -199,6 +199,16 @@ chatRouter.post('/chat', async (req: Request, res: Response): Promise<void> => {
     return;
   }
 
+  // Render/exfil guard stripped content — response still goes out, but record it
+  // so stripped exfil attempts are observable in the audit log (arch §11.6).
+  if (validation.sanitized) {
+    detectedThreats.push({
+      rule: 'RENDER_GUARD',
+      patternName: 'stripped_render_content',
+      location: 'output',
+    });
+  }
+
   const finalOutput = rehydratePii(validation.output, tokenMap);
 
   try {
