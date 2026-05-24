@@ -474,7 +474,7 @@ detectedThreats[] containing rule, patternName, and location.
 Layer	Mechanism	Required in v1	Purpose
 L1	Normalization	Yes	Defeat common encoding/homoglyph/control-char evasion
 L2	Regex/heuristic pre-filter	Yes	Deterministic named rules for corpus and auditability
-L3	Local ML classifier	No — v2 (see §17)	DeBERTa ONNX; deferred due to model download + startup complexity; L4 provides semantic coverage in v1
+L3	Local ML classifier	Yes	Llama Prompt Guard 2 (86M params) via @huggingface/transformers — multilingual, fine-tuned for prompt injection, plug-and-play (no native module compilation). Score band feeds L4 escalation.
 L4	LLM judge	Yes, conditional	Semantic backstop; fires on L1/L2/heuristic escalation signals (non-Latin, encoding anomalies, partial matches); fail-closed
 L5	Structural isolation	Yes	Reduce impact if something slips through
 L6	Output validation	Yes	Backstop on untrusted model output
@@ -566,24 +566,47 @@ STRUCTURED_BYPASS	Forced JSON/structured output indicating filters disabled or b
 Important: L2 patterns should use sanitized representative strings in tests. Do not paste the
 entire attack corpus into source comments or logs.
 
-9.6 L3 local classifier — DEFERRED TO v2
+9.6 L3 local classifier — Llama Prompt Guard 2
 
-L3 (DeBERTa ONNX) is not implemented in v1.
+L3 uses Meta's Llama Prompt Guard 2 (86M parameters) accessed via @huggingface/transformers.
 
-Reason: integrating an ONNX model requires baking a ~100 MB binary into the Docker image,
-adding onnxruntime-node as a native dependency, implementing tokenizer-aware segmentation,
-and writing a startup health check for model load. This is a meaningful scope item beyond v1.
+Why this model (not DeBERTa-v3-small-prompt-injection-v2):
 
-v1 semantic coverage relies on L4 (Haiku judge) triggered by L1/L2/heuristic escalation signals.
+- Multilingual: covers Hebrew, Russian, Arabic and other scripts that DeBERTa-v3-small does not.
+  This eliminates a structural dependency on L4 for non-English attacks (INJ-E3 class).
+- Trained specifically for prompt injection + jailbreaks; DeBERTa-v3-small was a general
+  text-classification model fine-tuned by a third party.
+- Released by Meta and actively maintained.
+- Same backbone class commercial LLM firewalls ship (Lakera, Microsoft Prompt Shields,
+  NVIDIA NeMo Guardrails all use small fine-tuned transformer classifiers).
 
-See §17 for the v2 DeBERTa classifier plan.
+Why @huggingface/transformers (not onnxruntime-node direct):
+
+- Pure JS/WASM — no native module compilation required, no platform-specific build failures
+  in CI (avoids the onnxruntime-node arm64-vs-x86_64 trap).
+- Tokenizer is bundled — no separate tokenizer integration.
+- Integration code: ~30 lines vs ~200 lines for onnxruntime-node direct.
+- HuggingFace-maintained, same org as the model weights.
+
+Runtime: int8 quantization, ~85 MB on disk, ~200 MB resident.
+Startup: model loads once at process start; readiness check must fail if load fails.
+
+Score band:
+- score ≥ 0.85 → L3 blocks (high-confidence injection), HTTP 400 + audit JUDGE_INJECTION
+  with rule `L3_CLASSIFIER_HIGH_CONFIDENCE`
+- 0.5 ≤ score < 0.85 → escalate to L4 with signal `L3_MID_CONFIDENCE`
+- score < 0.5 → continue to existing escalation logic
+
+L3 runs after L2 (regex pre-filter). If L2 blocked, L3 does not run.
+If L3 fails (model unavailable, inference error), fail closed via the L4 path
+(audit `JUDGE_UNAVAILABLE`, return 503).
 9.9 L4 LLM judge
 
 L4 uses Anthropic Haiku as a semantic judge.
 
 L4 is conditional (not fired for every request).
 
-In v1, L4 escalation signals (no L3 classifier score):
+In v1, L4 escalation signals (in addition to L3 mid-band score):
 
 mostly non-Latin / non-ASCII text (covers Hebrew INJ-E3 and similar),
 jailbreak/persona marker keywords detected by L2 but below hard block,
@@ -680,8 +703,8 @@ PII redaction runs before injection detection and before provider call.
 10.1 Required categories
 Category	v1 behavior
 Email	Regex redaction
-Israeli phone	Regex redaction for local and +972 variants
-International phone	Regex redaction for E.164-like formats
+Israeli phone	libphonenumber-js findPhoneNumbersInText with defaultCountry='IL' — covers IL mobile (05X), IL landlines (02/03/04/08/09), +972 international
+International phone	Same libphonenumber-js call covers all country numbering plans — no separate regex
 Israeli national ID	Context-or-checksum redaction
 10.2 Redaction token format
 
@@ -1287,18 +1310,16 @@ Regex performance tests pass.
 Gitleaks passes.
 README documents limitations and v2 work.
 
-17.11 L3 DeBERTa ONNX classifier (v2)
+17.11 L3 dedicated multilingual classifier trained on our audit corpus (v2)
 
-Replace L4 trigger heuristics with a proper ML pre-filter.
+v1 L3 uses Llama Prompt Guard 2, a general-purpose multilingual prompt-injection classifier.
+v2 work: replace it with a dedicated classifier fine-tuned on this gateway's own audit corpus
+(`sanitizedThreatContent[]` accumulated from blocked requests) to capture organization-specific
+attack patterns and adversarial paraphrases that the general-purpose model misses.
 
-Model: protectai/deberta-v3-small-prompt-injection-v2 (int8 ONNX, ~100 MB)
-Runtime: onnxruntime-node, CPU only, loaded once at startup
-Segmentation: overlapping 384-token windows with 128-token overlap, per-message and
-  full-transcript scan to prevent split attacks
-Thresholds: CLASSIFIER_BLOCK_THRESHOLD=0.85 (block), CLASSIFIER_ALLOW_THRESHOLD=0.15 (allow),
-  middle band → L4 escalation
-Startup: if model fails to load, readiness check must fail (not silently disabled)
-Why deferred: Docker image size (+100 MB), onnxruntime-node native build, tokenizer-aware
-  segmentation, and integration testing are a significant scope item beyond v1 time budget.
-  L4 heuristic escalation provides semantic coverage for v1; DeBERTa improves precision and
-  recall and reduces false-positive burden on L4.
+Approach:
+- Periodic offline training job consumes `sanitizedThreatContent` + benign samples
+- Multilingual base (e.g. xlm-roberta-base) fine-tuned with the audit corpus
+- Quantized to int8, swapped in via the same @huggingface/transformers pipeline
+- A/B run alongside Llama Prompt Guard 2 before promotion; promotion gated on
+  precision/recall improvement on a held-out adversarial set
