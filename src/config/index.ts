@@ -10,6 +10,8 @@ const schema = z.object({
     .enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'])
     .default('info'),
   BODY_SIZE_LIMIT: z.string().default('4mb'),
+  MONGO_URI: z.string().url().default('mongodb://localhost:27017/securellm'),
+  REDIS_URL: z.string().url().default('redis://localhost:6379'),
 });
 
 export type Config = z.infer<typeof schema>;

@@ -21,4 +21,19 @@ describe('config loader', () => {
   it('rejects an unknown NODE_ENV', () => {
     expect(() => loadConfig({ NODE_ENV: 'staging' })).toThrow();
   });
+
+  it('applies safe defaults for datastore URLs', () => {
+    const cfg = loadConfig({});
+    expect(cfg.MONGO_URI).toBe('mongodb://localhost:27017/securellm');
+    expect(cfg.REDIS_URL).toBe('redis://localhost:6379');
+  });
+
+  it('accepts explicit datastore URLs', () => {
+    const cfg = loadConfig({
+      MONGO_URI: 'mongodb://mongo:27017/securellm',
+      REDIS_URL: 'redis://redis:6379',
+    });
+    expect(cfg.MONGO_URI).toBe('mongodb://mongo:27017/securellm');
+    expect(cfg.REDIS_URL).toBe('redis://redis:6379');
+  });
 });
