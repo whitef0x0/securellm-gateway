@@ -2,40 +2,56 @@
 
 Security middleware that proxies all LLM calls through a 7-layer detection and redaction pipeline.
 
-## Quick start (required path)
+## Quick start
 
 ```bash
-# 1. Copy env template and fill in secrets (see below)
+# 1. Generate required secrets and write them into .env
 cp .env.example .env
-# edit .env
-
-# 2. Start app + mongo + redis
-docker-compose up --build
-```
-
-The stack starts without `ANTHROPIC_API_KEY`. In that case `/v1/chat` returns `503` (degraded mode). All other security controls and endpoints are fully functional.
-
-## Generating secrets
-
-Run this once and paste the output into your `.env`:
-
-```bash
 node -e "
 const { randomBytes } = require('crypto');
 console.log('LOG_PSEUDONYM_SECRET=' + randomBytes(40).toString('hex'));
 console.log('PII_ENCRYPTION_KEY=' + randomBytes(32).toString('base64'));
-"
+" >> .env
+
+# 2. Start the app, MongoDB, and Redis
+docker-compose up --build
 ```
 
-**Important:** These values must be stable. Changing `LOG_PSEUDONYM_SECRET` breaks audit log correlation. Changing `PII_ENCRYPTION_KEY` makes all existing PiiVault records permanently unreadable.
+That's it. The stack starts in **degraded mode** — all security controls are active, but `/v1/chat` returns `503` until you add an `ANTHROPIC_API_KEY` (see below).
+
+> **Keep your `.env` secret.** It is gitignored. The values for `LOG_PSEUDONYM_SECRET` and `PII_ENCRYPTION_KEY` must stay stable — rotating them breaks audit log correlation and makes existing PiiVault records permanently unreadable.
+
+## Seeding API keys
+
+Once the stack is running, create the first client and admin keys:
+
+```bash
+# Docker stack:
+docker compose exec app npm run seed
+
+# Local dev:
+npm run seed
+```
+
+The script prints each key once — store them securely. Only an argon2id hash is kept in the database.
+
+## Enabling live LLM calls (optional)
+
+Add your Anthropic API key to `.env` and restart:
+
+```
+ANTHROPIC_API_KEY=sk-ant-...
+```
+
+Get a key at [console.anthropic.com](https://console.anthropic.com). It is never logged — `getConfig()` in `src/config/index.ts` is the only place it is read, and pino redacts `authorization` and `x-api-key` headers at the transport layer.
 
 ## Local dev (without Docker)
 
-Requires Node 22+ and running Mongo + Redis instances.
+Requires Node 22+ and running MongoDB and Redis instances.
 
 ```bash
 npm install
-cp .env.example .env   # fill in secrets
+cp .env.example .env   # then generate and fill in secrets as above
 npm run dev            # tsx watch, hot-reload
 npm test               # vitest
 npm run lint           # eslint
@@ -52,40 +68,11 @@ npm run typecheck      # tsc --noEmit
 | `BODY_SIZE_LIMIT` | No | `4mb` | Express body parser limit |
 | `MONGO_URI` | No | `mongodb://localhost:27017/securellm` | MongoDB connection |
 | `REDIS_URL` | No | `redis://localhost:6379` | Redis connection |
-| `LOG_PSEUDONYM_SECRET` | **Yes** | — | 32+ chars; HMAC key for audit log key pseudonymization |
-| `PII_ENCRYPTION_KEY` | **Yes** | — | 32 bytes, base64-encoded; AES-256-GCM key for PiiVault |
-| `AUDIT_LOG_TTL_DAYS` | No | `90` | AuditLog TTL in days |
-| `PII_VAULT_TTL_DAYS` | No | `30` | PiiVault TTL in days |
-| `ANTHROPIC_API_KEY` | No | — | If absent, service starts degraded; `/v1/chat` returns 503 |
-
-## Enabling live LLM calls (optional)
-
-By default the service starts in degraded mode — all security controls are active but `/v1/chat` returns `503` because no provider is configured.
-
-To enable real Anthropic calls:
-
-1. Get an API key from [console.anthropic.com](https://console.anthropic.com)
-2. Add it to your `.env`:
-   ```
-   ANTHROPIC_API_KEY=sk-ant-...
-   ```
-3. Restart the service (`docker-compose up --build` or `npm run dev`)
-
-The key is never logged. The ESLint `no-process-env` rule enforces that it is only ever read through `getConfig()` in `src/config/index.ts`, and pino redacts `authorization` and `x-api-key` headers at the transport layer.
-
-## Creating API keys
-
-After the stack is running, seed the first client and admin keys:
-
-```bash
-# Against a running local stack:
-npm run seed
-
-# Against the Docker stack:
-docker compose exec app npm run seed
-```
-
-The seed script prints each key once — store them securely. They are not recoverable from the database (only the argon2id hash is stored).
+| `LOG_PSEUDONYM_SECRET` | **Yes** | — | HMAC key for audit log pseudonymization; generate with `randomBytes(40).toString('hex')` |
+| `PII_ENCRYPTION_KEY` | **Yes** | — | AES-256-GCM key for PiiVault; generate with `randomBytes(32).toString('base64')` |
+| `AUDIT_LOG_TTL_DAYS` | No | `90` | AuditLog document TTL in days |
+| `PII_VAULT_TTL_DAYS` | No | `30` | PiiVault document TTL in days |
+| `ANTHROPIC_API_KEY` | No | — | If absent, `/v1/chat` returns `503` (degraded mode) |
 
 ## Architecture
 
