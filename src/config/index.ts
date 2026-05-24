@@ -12,6 +12,11 @@ const schema = z.object({
   BODY_SIZE_LIMIT: z.string().default('4mb'),
   MONGO_URI: z.string().url().default('mongodb://localhost:27017/securellm'),
   REDIS_URL: z.string().url().default('redis://localhost:6379'),
+  LOG_PSEUDONYM_SECRET: z.string().min(32),
+  PII_ENCRYPTION_KEY: z.string().min(44), // 32 bytes base64 = 44 chars
+  AUDIT_LOG_TTL_DAYS: z.coerce.number().int().positive().default(90),
+  PII_VAULT_TTL_DAYS: z.coerce.number().int().positive().default(30),
+  ANTHROPIC_API_KEY: z.string().optional(),
 });
 
 export type Config = z.infer<typeof schema>;
