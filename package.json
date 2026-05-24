@@ -17,9 +17,11 @@
     "seed": "tsx src/scripts/seed.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.98.0",
     "argon2": "^0.44.0",
     "express": "^5.2.1",
     "helmet": "^8.2.0",
+    "ioredis": "^5.10.1",
     "mongoose": "^9.6.2",
     "pino": "^10.3.1",
     "pino-http": "^11.0.0",

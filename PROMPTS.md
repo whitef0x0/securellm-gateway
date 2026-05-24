@@ -213,14 +213,33 @@ See SAVED_PROMPTS.md
 
 ### 3c. Debugging
 
-**Tool**: _[tool name]_
+**Tool**: Claude Code (claude-sonnet-4-6)
 
 **Prompt (verbatim)**:
 ```
-[paste prompt here]
+The rate limiter test "returns 429 after exceeding per-key override limit" is failing.
+The key is created with rateLimitOverride=2. Three sequential requests are made to /v1/audit.
+
+r1 correctly returns 403 (admin-gated route) with x-ratelimit-limit='2' and x-ratelimit-remaining='1'.
+r2 correctly returns 403 with x-ratelimit-remaining='0'.
+r3 returns 403 — expected 429 and Retry-After header.
+
+The rate limiter is a Redis sorted-set sliding window implemented as a Lua EVAL script.
+The condition that triggers 429 is `count > limit`.
+
+With limit=2:
+- After r1: count=1, 1>2 false → next() ✓
+- After r2: count=2, 2>2 false → next() ✓
+- After r3: count=3, 3>2 true → should 429, but 403 is returned
+
+This suggests either (a) count is not reaching 3 for r3, (b) `req.auth.rateLimitOverride` is
+not being read correctly on r3, or (c) there is a type coercion issue with the return value of
+redis.eval.
+
+Show me the rateLimiter.ts middleware and identify the root cause.
 ```
 
-**What I did with the output**: _[one sentence]_
+**What I did with the output**: Confirmed the Lua script and JS comparison were correct by tracing the data flow; the fix was ensuring `ioredis` returned a numeric count (not a stringified value) from `eval`, and verifying `rateLimitOverride` was correctly populated on `req.auth` for all three requests via auth.ts.
 
 ---
 
@@ -262,7 +281,18 @@ if ('reveal' in req.query) {
   mixed-language) to balance the dataset, scaffold the fine-tuning + evaluation pipeline, and benchmark candidate
    models against the full Appendix A corpus before promotion.
 
-  2. Add holistic semantic-leak detection to output validation.
+  2. Add L3 DeBERTa ONNX classifier for semantic injection detection.
+  v1 uses L4 (Haiku judge) as the semantic layer, triggered by L1/L2/heuristic escalation signals
+  (non-Latin script, encoding anomalies, long messages). This works but relies on a paid Anthropic
+  API call on suspicious input rather than a local deterministic probability score.
+  v2 would bake protectai/deberta-v3-small-prompt-injection-v2 (int8 ONNX, ~100 MB) into the
+  Docker image, run on CPU at startup, and use overlapping 384-token windows for deterministic
+  scan coverage. L3 score in a middle band (0.15–0.85) would escalate to L4; high confidence
+  (≥0.85) would block directly without a judge call. How AI would help: generate the tokenizer-
+  aware segmentation logic, write the ONNX startup health check, and produce adversarial test
+  fixtures across all window-boundary edge cases.
+
+  3. Add holistic semantic-leak detection to output validation.
   The current output validator (L6) catches verbatim secret patterns and known compromise markers, but not
   paraphrased system-prompt leakage — a model that reveals its instructions in its own words rather than printing
    them literally. I deliberately chose buffered (non-streaming) responses specifically so this holistic check is
@@ -383,6 +413,18 @@ apply downstream authorization before tool/action execution.
 ---
 
 ## Interaction Log
+
+### Entry 2 — 2026-05-24 — Parallel Agent Implementation
+
+- **Phase**: Implementation
+- **Pattern**: Two Claude Code agents (claude-sonnet-4-6) running in parallel on non-overlapping files.
+  - Agent A: `src/detection/structuralIsolation.ts` (L5 XML nonce wrapping) + `src/services/llmProvider.ts` (Anthropic SDK integration, error mapping, model allowlist)
+  - Agent B: `src/middleware/piiRedactor.ts`, `src/detection/normalize.ts`, `src/detection/patterns/`, `src/detection/llmJudge.ts` (L1/L2 normalization, regex detection, L4 judge)
+- **Why parallel**: The two workstreams have no shared files. Agent A builds `llmProvider.ts` as a standalone service; Agent B's `llmJudge.ts` imports it. Parallel execution halves wall-clock implementation time with zero merge risk on source files.
+- **Validation**: Each agent shows every file before writing it; I reviewed and approved before it was committed. Both agents operate on TDD-first discipline — failing test written and confirmed before implementation.
+- **Conflict surface**: Only `package.json` and `package-lock.json` — managed by Agent A (Anthropic SDK install). Agent B made no package changes.
+
+---
 
 ### Entry 1 — 2026-05-18 — Workflow Design
 

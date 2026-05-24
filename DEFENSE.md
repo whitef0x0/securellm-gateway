@@ -24,24 +24,29 @@ Point to: `PROMPTS.md §3a` (architecture prompt), `PROMPTS.md §3b` (security r
 
 ```
 request → auth → rate-limit → PII-redact → L1-normalize → L2-regex
-        → L3-DeBERTa → L4-Haiku-judge → L5-XML-isolate
+        → L4-Haiku-judge (conditional) → L5-XML-isolate
         → LLM → L6-output-validate → re-hydrate → audit-write → response
 ```
 
 Key point to make: **PII runs before injection detection**. The LLM judge (L4) and the provider (Anthropic)
 never see raw PII values. They see `[PII:email:uuid]` tokens. This is the most important ordering decision.
 
-### Most interesting decision: L3+L4 escalation band
+**Note on L3**: DeBERTa ONNX classifier is explicitly deferred to v2. If asked, explain the trade-off —
+it would improve semantic precision and reduce L4 API costs, but requires baking a ~100 MB model into the
+Docker image, adding onnxruntime-node native deps, and implementing tokenizer-aware segmentation.
+That scope exceeded the v1 time budget. v1 semantic coverage is L4 only, triggered on escalation signals.
+See `PROMPTS.md §5` item 2 and `arch_reviewed.md §17.11`.
 
-Don't just say "I used DeBERTa." Explain the score-band logic:
-- P(injection) ≥ 0.85 → block (L3 confident)
-- P(injection) ≤ 0.15 → allow (L3 confident)
-- Middle band **or** escalation signal → escalate to L4 Haiku judge
+### Most interesting decision: L4 escalation design (without L3)
 
-Escalation signals: non-ASCII-heavy input, jailbreak marker keywords, very long message, base64/hex blob.
+Explain the heuristic-trigger logic:
+- L2 hard match → block 400 immediately (deterministic, no judge needed)
+- L4 fires if **any** escalation signal: non-Latin script, base64/hex blob, NORMALIZATION_DIFFERENTIAL, jailbreak keyword heuristic, long message
+- L4 verdict: inject → 400; benign → L5; timeout/error → 503 fail-closed
 
-Why this matters: L4 (Haiku) costs money and latency. Firing it only on ambiguous inputs keeps p95 latency
-acceptable for normal EN traffic while covering DeBERTa's blind spots (Hebrew injections, DAN jailbreaks).
+Why this matters: L4 costs money and adds latency. Firing only on signals keeps p95 latency acceptable
+for normal EN traffic. The non-Latin trigger specifically covers Hebrew INJ-E3 (translate-and-execute),
+which L2 English regex alone would miss.
 
 ### Most interesting security decision: auth key design
 
@@ -59,6 +64,7 @@ Why `<keyIdPrefix>.<secret>` with a public lookup handle?
 | No streaming | Holistic output validation requires full response. Streaming shows unvetted output. |
 | No nginx in required path | Evaluators run `docker-compose up`. Keep it boring. |
 | No node-re2 | ReDoS perf tests cover the risk. node-re2 deferred to v2. |
+| No L3 DeBERTa | ~100 MB ONNX model + native onnxruntime-node + tokenizer segmentation exceeds v1 scope. L4 heuristic escalation covers semantic gap. DeBERTa is v2 (arch §17.11). |
 | L4 disable toggle | Arch §19 guardrail: no disable toggle in v1. Fail-closed only. |
 | Bulk PII reveal | Reveal is per-correlationId only, self-auditing. Bulk export = separate scoped feature. |
 
@@ -85,10 +91,21 @@ Why `<keyIdPrefix>.<secret>` with a public lookup handle?
 > detector is unavailable, we can't guarantee safety, we don't proceed.
 
 **"How did you use AI in this project?"**
-> Point to PROMPTS.md. Three patterns: (1) architecture generation + red-team review before coding,
+> Point to PROMPTS.md. Four patterns: (1) architecture generation + red-team review before coding,
 > (2) TDD implementation with per-file approval — I reviewed every file before it was written,
-> (3) code review questions mid-implementation (e.g. caught `!== undefined` vs `'reveal' in req.query`).
+> (3) parallel agents on non-overlapping workstreams — Agent A owned L5 structural isolation and
+> the Anthropic provider service; Agent B owned PII redaction, L1/L2 detection, and the L4 judge.
+> Both ran simultaneously with no source file conflicts; `llmProvider.ts` is a shared dependency
+> that Agent B's judge imports. (4) targeted debugging prompts mid-implementation (e.g. the
+> rate-limiter 429 issue, the `'reveal' in req.query` narrowing fix).
 > PROMPTS.md §4 documents a specific output I rejected and why.
+
+**"Why not use DeBERTa / an ML classifier?"**
+> It's in v2 (`arch §17.11`, `PROMPTS.md §5`). L3 would improve semantic detection precision and
+> reduce L4 API cost by replacing the heuristic escalation trigger with a scored probability band.
+> It was cut because baking a 100 MB ONNX model into Docker + onnxruntime-node native build +
+> tokenizer-aware segmentation is a meaningful scope item on its own. L4 with heuristic escalation
+> provides semantic coverage now. DeBERTa makes L4 more precise and cost-efficient.
 
 **"What doesn't this protect against?"**
 > README has a section. Key items: prompt injection via documents/RAG (no RAG endpoint in v1),
