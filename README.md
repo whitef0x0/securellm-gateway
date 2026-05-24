@@ -58,6 +58,35 @@ npm run typecheck      # tsc --noEmit
 | `PII_VAULT_TTL_DAYS` | No | `30` | PiiVault TTL in days |
 | `ANTHROPIC_API_KEY` | No | — | If absent, service starts degraded; `/v1/chat` returns 503 |
 
+## Enabling live LLM calls (optional)
+
+By default the service starts in degraded mode — all security controls are active but `/v1/chat` returns `503` because no provider is configured.
+
+To enable real Anthropic calls:
+
+1. Get an API key from [console.anthropic.com](https://console.anthropic.com)
+2. Add it to your `.env`:
+   ```
+   ANTHROPIC_API_KEY=sk-ant-...
+   ```
+3. Restart the service (`docker-compose up --build` or `npm run dev`)
+
+The key is never logged. The ESLint `no-process-env` rule enforces that it is only ever read through `getConfig()` in `src/config/index.ts`, and pino redacts `authorization` and `x-api-key` headers at the transport layer.
+
+## Creating API keys
+
+After the stack is running, seed the first client and admin keys:
+
+```bash
+# Against a running local stack:
+npm run seed
+
+# Against the Docker stack:
+docker compose exec app npm run seed
+```
+
+The seed script prints each key once — store them securely. They are not recoverable from the database (only the argon2id hash is stored).
+
 ## Architecture
 
 See [`arch_reviewed.md`](arch_reviewed.md) for the full design, threat model, and implementation decisions.

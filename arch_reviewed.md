@@ -80,6 +80,7 @@ small representative strings sufficient to prove detector behavior.
 |---|---|---|
 | Language | TypeScript, `strict: true` | Required by brief |
 | HTTP | Express | Simple and sufficient for v1 |
+| Security headers | Helmet | Adds X-Content-Type-Options, X-Frame-Options, HSTS, and removes x-powered-by. Single middleware, v1 defaults. |
 | Datastore | MongoDB via Mongoose | Required by brief; useful indexes and schema validation |
 | Cache / rate limit | Redis via `ioredis` | Required by brief |
 | Key hashing | argon2id | Memory-hard API key secret verification |
@@ -158,6 +159,11 @@ POST /v1/chat
 [1] Correlation ID
     - UUID assigned
     - X-Request-Id response header
+  │
+  ▼
+[1b] Security headers + proxy trust
+    - Helmet (first middleware, all routes)
+    - app.set('trust proxy', false) — explicit, no X-Forwarded-For trust without nginx
   │
   ▼
 [2] Body parsing
@@ -1133,7 +1139,18 @@ redis sentinel
 
 Do not make the required take-home path depend on these optional services.
 
-15.3 Dockerfile
+15.3 Graceful shutdown
+
+SIGTERM/SIGINT → server.close() → drain in-flight requests → disconnect Mongoose → process.exit(0).
+Hard-exit fallback: 10 000 ms (SHUTDOWN_DRAIN_MS constant in server.ts).
+
+Rationale for 10 s: matches Docker's default stop_grace_period, which sends SIGKILL at 10 s.
+Setting our drain window equal to Docker's grace period means we always self-exit cleanly before
+Docker force-kills us. The drain window must cover the slowest in-flight request — for an LLM proxy,
+that is the provider round-trip (typically 2–8 s), so 10 s provides headroom without exceeding
+Docker's patience.
+
+15.4 Dockerfile
 
 Requirements:
 
@@ -1142,14 +1159,21 @@ non-root runtime user,
 install production dependencies only in runtime,
 copy compiled dist,
 no secrets baked into image.
-15.4 CI
+15.5 CI
 
-GitHub Actions should run:
+GitHub Actions workflow at .github/workflows/ci.yml runs on every push and PR:
 
-npm ci
-npm run lint
-npm test
-gitleaks detect
+1. npm ci
+2. npm run lint         (ESLint — no-console, no-process-env, no-explicit-any)
+3. npm run typecheck    (tsc --noEmit)
+4. npm test             (vitest — secrets generated dynamically, no CI secrets needed)
+5. gitleaks/gitleaks-action@v2 with fetch-depth: 0 (full history scan)
+
+.gitleaks.toml allowlists test fixture strings (synthetic values, never real secrets).
+
+Key prefix constants (KEY_PREFIX_CLIENT, KEY_PREFIX_ADMIN, KEY_PREFIX_BASE) live in
+src/constants.ts and are the single source of truth for key shape — referenced by both
+auth middleware and seed script.
 16. Required Tests
 
 Tests are part of the design. Implement test-first where practical.

@@ -226,7 +226,23 @@ See SAVED_PROMPTS.md
 
 ## 4. What I Rejected
 
-_[To be completed. Record one AI output you rejected or rewrote, and why. Note the tool, what it suggested, and what you used instead.]_
+**Tool:** Claude Code (claude-sonnet-4-6)
+**Context:** Implementing the audit route's PII reveal gate during Chunk 4 (auth + admin gate).
+
+**What it suggested:**
+```ts
+if (req.query['reveal'] !== undefined) {
+```
+
+**Why I rejected it:**
+`req.query['reveal']` has type `string | ParsedQs | string[] | ParsedQs[] | undefined` — TypeScript handles the undefined correctly, but `!== undefined` is a subtle read. More importantly, it obscures intent: the check is "was this parameter present in the URL at all?", not "does this parameter have a non-undefined value?" The distinction matters because `?reveal=` (empty value) should still trigger the scope check, and a reader scanning the condition might miss that.
+
+**What I used instead:**
+```ts
+if ('reveal' in req.query) {
+```
+
+`'reveal' in req.query` reads as exactly what it means — key presence check — and TypeScript narrows the type inside the block as a bonus. The original would have worked at runtime, but this version is harder to misread during a security review.
 
 ---
 

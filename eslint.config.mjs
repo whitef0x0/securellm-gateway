@@ -14,8 +14,8 @@ export default tseslint.config(
     },
   },
   {
-    // The config loader and tests are the only places allowed to read process.env directly.
-    files: ['src/config/**', 'tests/**', '**/*.config.*'],
+    // Config loader and tests read process.env directly; scripts use console for operator output.
+    files: ['src/config/**', 'src/scripts/**', 'tests/**', '**/*.config.*'],
     rules: { 'no-process-env': 'off', 'no-console': 'off' },
   },
   { ignores: ['dist/', 'coverage/', 'node_modules/'] },

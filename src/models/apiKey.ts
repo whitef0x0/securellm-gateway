@@ -26,6 +26,4 @@ const ApiKeySchema = new Schema<IApiKey>(
   { timestamps: { createdAt: 'createdAt', updatedAt: false } },
 );
 
-ApiKeySchema.index({ keyIdPrefix: 1 }, { unique: true });
-
 export const ApiKey = model<IApiKey>('ApiKey', ApiKeySchema);

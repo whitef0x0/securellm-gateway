@@ -1,0 +1,7 @@
+[allowlist]
+description = "Test fixtures — synthetic values, never real secrets"
+regexes = [
+  '''test-pseudonym-secret''',
+  '''test-secret-32-chars''',
+  '''tooshort''',
+]
