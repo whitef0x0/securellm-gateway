@@ -1,6 +1,6 @@
 import { Schema, model, type Document } from 'mongoose';
 
-export interface IApiKey extends Document {
+interface IApiKey extends Document {
   keyIdPrefix: string;
   keyHash: string;
   role: 'client' | 'admin';

@@ -1,14 +1,14 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { getConfig } from '../config';
 
-export interface ProviderChatInput {
+interface ProviderChatInput {
   model: string;
   system?: string;
   messages: Array<{ role: 'user' | 'assistant'; content: string }>;
   allowedModels?: string[];
 }
 
-export interface ProviderChatOutput {
+interface ProviderChatOutput {
   content: string;
   model: string;
   inputTokens: number;

@@ -13,11 +13,19 @@ console.log('LOG_PSEUDONYM_SECRET=' + randomBytes(40).toString('hex'));
 console.log('PII_ENCRYPTION_KEY=' + randomBytes(32).toString('base64'));
 " >> .env
 
-# 2. Start the app, MongoDB, and Redis
-docker-compose up --build
+# 2. Start nginx, the app, MongoDB, and Redis
+docker compose up --build
 ```
 
-That's it. The stack starts in **degraded mode** — all security controls are active, but `/v1/chat` returns `503` until you add an `ANTHROPIC_API_KEY` (see below).
+The gateway is reachable at **`http://localhost:8080`** (nginx terminates the public connection and proxies upstream to the app). All `curl` examples below use port 8080.
+
+```bash
+# Liveness and readiness
+curl http://localhost:8080/livez       # → {"status":"alive"}
+curl http://localhost:8080/healthz     # → {"status":"healthy"} or {"status":"degraded"}
+```
+
+The stack starts in **degraded mode** — all security controls are active, but `/v1/chat` returns `503` until you add an `ANTHROPIC_API_KEY` (see below).
 
 > **Keep your `.env` secret.** It is gitignored. The values for `LOG_PSEUDONYM_SECRET` and `PII_ENCRYPTION_KEY` must stay stable — rotating them breaks audit log correlation and makes existing PiiVault records permanently unreadable.
 
@@ -73,6 +81,22 @@ npm run typecheck      # tsc --noEmit
 | `AUDIT_LOG_TTL_DAYS` | No | `90` | AuditLog document TTL in days |
 | `PII_VAULT_TTL_DAYS` | No | `30` | PiiVault document TTL in days |
 | `ANTHROPIC_API_KEY` | No | — | If absent, `/v1/chat` returns `503` (degraded mode) |
+| `L3_CLASSIFIER_MODEL` | No | `protectai/deberta-v3-base-prompt-injection-v2` | HuggingFace model ID for the L3 classifier. Pre-baked into the Docker image at build time. |
+| `TRUST_PROXY` | No | `0` | How many reverse-proxy hops Express should trust for `X-Forwarded-*`. `1` in `docker-compose.yml` (nginx → app). |
+
+## Running real-model integration tests
+
+Two suites are skipped by default and intended for ad-hoc verification:
+
+```bash
+# Real L3 classifier — loads DeBERTa-v3-base from HuggingFace (~140 MB, ~30s first run)
+RUN_REAL_CLASSIFIER=1 npm test -- tests/integration/real_classifier.test.ts
+
+# Real L4 judge — sends the brief corpus to Anthropic Haiku
+ANTHROPIC_API_KEY=sk-ant-... npm test -- tests/integration/real_judge.test.ts
+```
+
+CI does not run these (no API key, no HF download budget). They are for local confirmation that the upstream models actually catch the brief attack corpus.
 
 ## Known limitations
 

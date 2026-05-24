@@ -1,7 +1,7 @@
 import { Schema, model, type Document } from 'mongoose';
 import { getConfig } from '../config/index.js';
 
-export interface IPiiVault extends Document {
+interface IPiiVault extends Document {
   correlationId: string;
   ciphertext: Buffer;
   iv: Buffer;

@@ -1,8 +1,25 @@
 services:
+  nginx:
+    image: nginx:1.27-alpine
+    ports:
+      - "8080:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      app:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
   app:
     build: .
-    ports:
-      - "3000:3000"
+    expose:
+      - "3000"
     environment:
       NODE_ENV: production
       PORT: 3000
@@ -10,6 +27,8 @@ services:
       BODY_SIZE_LIMIT: 4mb
       MONGO_URI: mongodb://mongo:27017/securellm
       REDIS_URL: redis://redis:6379
+      # Trust the immediate upstream (nginx) hop for X-Forwarded-* headers (arch §7.5).
+      TRUST_PROXY: "1"
       # ANTHROPIC_API_KEY is optional — omit and /v1/chat returns 503 (degraded mode)
     depends_on:
       mongo:
@@ -17,6 +36,14 @@ services:
       redis:
         condition: service_healthy
     restart: unless-stopped
+    healthcheck:
+      # /healthz returns 200 when mongo+redis are reachable (degraded OR healthy);
+      # 503 if a datastore dependency is down.
+      test: ["CMD-SHELL", "node -e \"require('http').get('http://localhost:3000/healthz',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))\""]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 
   mongo:
     image: mongo:7
@@ -31,8 +58,6 @@ services:
 
   redis:
     image: redis:7-alpine
-    ports:
-      - "6379:6379"
     volumes:
       - redis_data:/data
     healthcheck:

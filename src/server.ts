@@ -14,7 +14,7 @@ async function main(): Promise<void> {
     connectDb(),
     // L3 classifier load is non-blocking for the others; if it fails the pipeline still runs
     // (L3 returns 'unavailable' and L4 picks up).
-    loadClassifier(config.L3_CLASSIFIER_MODEL),
+    loadClassifier(config.L3_CLASSIFIER_MODEL, config.MODEL_CACHE_DIR),
   ]);
   if (getClassifier()) {
     logger.info({ model: config.L3_CLASSIFIER_MODEL }, 'L3 classifier loaded');

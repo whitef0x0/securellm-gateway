@@ -7,7 +7,7 @@ export interface DetectedThreat {
   location: string;
 }
 
-export interface IAuditLog extends Document {
+interface IAuditLog extends Document {
   correlationId: string;
   timestamp: Date;
   apiKeyId: Types.ObjectId;

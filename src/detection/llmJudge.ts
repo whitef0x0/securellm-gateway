@@ -22,7 +22,13 @@ Do not output anything outside the JSON object.`;
 
 function parseVerdict(text: string): JudgeResponse | null {
   try {
-    const obj = JSON.parse(text) as Record<string, unknown>;
+    // Models commonly wrap JSON in markdown fences (```json ... ```) or add prose.
+    // Extract the first balanced-looking object by slicing from the first { to the
+    // last } before parsing. Fail closed if no object is found.
+    const start = text.indexOf('{');
+    const end = text.lastIndexOf('}');
+    if (start === -1 || end <= start) return null;
+    const obj = JSON.parse(text.slice(start, end + 1)) as Record<string, unknown>;
     const { verdict, confidence, rule, reason } = obj;
     if (verdict !== 'benign' && verdict !== 'injection') return null;
     if (typeof confidence !== 'number') return null;

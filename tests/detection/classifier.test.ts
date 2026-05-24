@@ -13,14 +13,15 @@ describe('L3 classifier — score band', () => {
     expect(result).toEqual({ action: 'unavailable' });
   });
 
-  it('blocks at high-confidence injection (score ≥ 0.85)', async () => {
+  it('escalates (never blocks) at high-confidence injection', async () => {
     setClassifier(fakePipeline('INJECTION', 0.92) as any);
     const result = await classify('some text');
-    expect(result).toMatchObject({ action: 'block', rule: 'L3_CLASSIFIER_HIGH_CONFIDENCE' });
+    // L3 never blocks on its own — even high confidence escalates to L4.
+    expect(result).toMatchObject({ action: 'escalate' });
     expect((result as any).score).toBeCloseTo(0.92);
   });
 
-  it('escalates at mid-confidence (0.5 ≤ score < 0.85)', async () => {
+  it('escalates at mid-confidence (score ≥ 0.5)', async () => {
     setClassifier(fakePipeline('INJECTION', 0.7) as any);
     const result = await classify('some text');
     expect(result).toMatchObject({ action: 'escalate' });
@@ -39,10 +40,10 @@ describe('L3 classifier — score band', () => {
     expect(result.action).toBe('pass');
   });
 
-  it('handles LABEL_1 (HuggingFace default label scheme) as injection', async () => {
+  it('handles LABEL_1 (HuggingFace default label scheme) as injection → escalate', async () => {
     setClassifier(fakePipeline('LABEL_1', 0.91) as any);
     const result = await classify('some text');
-    expect(result.action).toBe('block');
+    expect(result.action).toBe('escalate');
   });
 
   it('returns unavailable when pipeline throws', async () => {

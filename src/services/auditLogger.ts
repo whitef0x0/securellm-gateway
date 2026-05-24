@@ -6,7 +6,7 @@ import { encrypt } from '../crypto/fieldCrypto';
 import { getConfig } from '../config';
 import type { TokenMap } from '../detection/piiRedactor';
 
-export const PATTERN_SET_VERSION = '1.0.0';
+const PATTERN_SET_VERSION = '1.0.0';
 
 export interface AuditParams {
   correlationId: string;

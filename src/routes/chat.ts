@@ -104,20 +104,13 @@ chatRouter.post('/chat', async (req: Request, res: Response): Promise<void> => {
     return;
   }
 
-  // L3 classifier — runs when L2 didn't hard-block. Score band: ≥0.85 block,
-  // 0.5–0.85 escalate to L4, <0.5 pass. If model unavailable, fall through to L4 path.
+  // L3 classifier — runs when L2 didn't hard-block. L3 never blocks on its own
+  // authority (it false-positives on structured payloads); a suspicious score
+  // escalates to the L4 judge, which makes the final block/pass decision. If the
+  // model is unavailable, we keep the existing scanResult (L2's escalation signals).
   const l3 = await classify(redactedUserText);
-  if (l3.action === 'block') {
-    detectedThreats.push({
-      rule: l3.rule,
-      patternName: 'l3_classifier_high_confidence',
-      location: 'input',
-    });
-    await auditAndRespond('blocked', 400, { error: 'injection_detected', detectedThreats });
-    return;
-  }
   if (l3.action === 'escalate') {
-    scanResult = { action: 'escalate', signals: ['L3_MID_CONFIDENCE'] };
+    scanResult = { action: 'escalate', signals: ['L3_SUSPICIOUS'] };
   }
 
   // L4 judge — fail closed if escalation signals present and judge unavailable/uncertain

@@ -14,6 +14,7 @@
     "test:watch": "vitest",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
+    "deadcode": "knip",
     "seed": "tsx src/scripts/seed.ts"
   },
   "dependencies": {
@@ -36,6 +37,7 @@
     "@types/supertest": "^7.2.0",
     "@vitest/coverage-v8": "^4.1.7",
     "eslint": "^10.4.0",
+    "knip": "^5.39.0",
     "mongodb-memory-server": "^11.1.0",
     "supertest": "^7.2.2",
     "tsx": "^4.22.3",

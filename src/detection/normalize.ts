@@ -1,4 +1,4 @@
-export type EscalationSignal =
+type EscalationSignal =
   | 'NORMALIZATION_DIFFERENTIAL'
   | 'ENCODED_PAYLOAD_DETECTED';
 

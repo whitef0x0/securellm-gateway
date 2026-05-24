@@ -22,6 +22,13 @@ const schema = z.object({
   L3_CLASSIFIER_MODEL: z
     .string()
     .default('protectai/deberta-v3-base-prompt-injection-v2'),
+  // Where transformers.js caches L3 model weights. Default is a project-local dir
+  // (outside node_modules so it survives `npm ci`). Docker overrides to the pre-baked
+  // image path. Relative paths resolve against the process working directory.
+  MODEL_CACHE_DIR: z.string().default('.model-cache'),
+  // Number of trusted reverse-proxy hops in front of Express. 0 = trust no proxy
+  // (default for local dev / tests). Set to 1 in docker-compose (nginx → app).
+  TRUST_PROXY: z.coerce.number().int().nonnegative().default(0),
 });
 
 export type Config = z.infer<typeof schema>;
