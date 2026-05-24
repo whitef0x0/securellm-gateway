@@ -66,6 +66,11 @@ export async function chat(input: ProviderChatInput): Promise<ProviderChatOutput
     if (e.status === 429) {
       throw new ProviderError(503, 'provider_unavailable', 'Provider rate limited');
     }
+    // Unknown/invalid model → 422 (arch §14.5). Anthropic returns 404 for a model id
+    // it doesn't recognize; surface that as an unprocessable request, not a 5xx.
+    if (e.status === 404 || e.status === 400) {
+      throw new ProviderError(422, 'invalid_model', 'Requested model is not available');
+    }
     if (typeof e.status === 'number' && e.status >= 500) {
       throw new ProviderError(502, 'provider_error', `Provider returned ${e.status}`);
     }

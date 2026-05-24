@@ -84,4 +84,13 @@ describe('llmProvider', () => {
     expect(err.status).toBe(504);
     expect(err.code).toBe('provider_timeout');
   });
+
+  it('maps unknown model (provider 404) to ProviderError 422', async () => {
+    withKey();
+    mockCreate.mockRejectedValue(Object.assign(new Error('not found'), { status: 404 }));
+    const err = await chat(baseInput).catch((e) => e);
+    expect(err).toBeInstanceOf(ProviderError);
+    expect(err.status).toBe(422);
+    expect(err.code).toBe('invalid_model');
+  });
 });

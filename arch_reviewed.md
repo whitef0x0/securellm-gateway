@@ -594,15 +594,23 @@ Why @huggingface/transformers (not onnxruntime-node direct):
 Runtime: int8 quantization, ~85 MB on disk, ~200 MB resident.
 Startup: model loads once at process start; readiness check must fail if load fails.
 
-Score band:
-- score ≥ 0.85 → L3 blocks (high-confidence injection), HTTP 400 + audit JUDGE_INJECTION
-  with rule `L3_CLASSIFIER_HIGH_CONFIDENCE`
-- 0.5 ≤ score < 0.85 → escalate to L4 with signal `L3_MID_CONFIDENCE`
-- score < 0.5 → continue to existing escalation logic
+Score band (escalate-only — L3 never blocks on its own authority):
+- score ≥ 0.5 → escalate to L4 with signal `L3_SUSPICIOUS`; the L4 judge makes the
+  final block/pass decision
+- score < 0.5 → pass (no L4 call on clearly-benign traffic)
+
+Rationale for escalate-only: a 139 M local classifier is a high-recall *trigger*, not
+the final arbiter. In testing it false-positived (>0.99) on legitimate structured
+payloads — e.g. a benign "summarise this customer JSON" request (brief PII-D3). Giving
+it unilateral block authority would have rejected valid traffic the brief requires to be
+forwarded. Escalating to the more capable L4 judge keeps recall high (no injection slips
+silently past) without L3's false positives causing wrong blocks. This was a deliberate
+change from an earlier ≥0.85-block design, driven by a no-mocks end-to-end test.
 
 L3 runs after L2 (regex pre-filter). If L2 blocked, L3 does not run.
-If L3 fails (model unavailable, inference error), fail closed via the L4 path
-(audit `JUDGE_UNAVAILABLE`, return 503).
+If L3 fails (model unavailable, inference error), it returns `unavailable` and the
+pipeline keeps L2's escalation decision; an escalated request with no available judge
+fails closed (audit `JUDGE_UNAVAILABLE`, return 503).
 9.9 L4 LLM judge
 
 L4 uses Anthropic Haiku as a semantic judge.

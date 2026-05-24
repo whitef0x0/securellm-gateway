@@ -1,5 +1,8 @@
 # --- build stage ---
-FROM node:22-alpine AS build
+# Debian-based (glibc), NOT alpine: onnxruntime-node (pulled in by
+# @huggingface/transformers for the L3 classifier) ships prebuilt binaries that
+# link against glibc. Alpine's musl libc cannot load them (ld-linux-*.so.1 missing).
+FROM node:22-slim AS build
 WORKDIR /app
 
 COPY package*.json ./
@@ -16,11 +19,11 @@ ENV MODEL_CACHE_DIR=/app/.model-cache
 RUN npx tsx src/scripts/prefetchModels.ts
 
 # --- runtime stage ---
-FROM node:22-alpine AS runtime
+FROM node:22-slim AS runtime
 WORKDIR /app
 
 # Non-root user for runtime isolation
-RUN addgroup -S gateway && adduser -S gateway -G gateway
+RUN groupadd --system gateway && useradd --system --gid gateway gateway
 
 COPY package*.json ./
 RUN npm ci --omit=dev && npm cache clean --force

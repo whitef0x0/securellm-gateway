@@ -117,7 +117,7 @@ describe('auth middleware + admin gate', () => {
     expect(res.status).toBe(403);
   });
 
-  it('admin with pii:reveal can reveal → 200', async () => {
+  it('admin with pii:reveal passes the scope gate (404 for unknown id, not 403)', async () => {
     const app = createApp(redis);
     await createTestKey({
       prefix: 'ak_admin_t06',
@@ -128,6 +128,8 @@ describe('auth middleware + admin gate', () => {
     const res = await request(app)
       .get('/v1/audit?reveal=someid')
       .set('x-api-key', 'ak_admin_t06.adminsec');
-    expect(res.status).toBe(200);
+    // Authorized through the scope gate; the record doesn't exist so the route 404s.
+    // (Full reveal-with-data behavior is covered in tests/audit/auditRoute.test.ts.)
+    expect(res.status).toBe(404);
   });
 });
